@@ -61,12 +61,17 @@ Same pattern for “write a test file”: expect `write_file` or `edit_file` loc
 
 So: **agent loop + tool schemas + local (or server-side) execution** is the skill. MCP is a portable way to *plug in* more tools without growing a giant in-process registry. We deliberately ship four built-in tools first so you can see the whole path in one repo before adding a protocol layer.
 
+## Verify-after-write
+
+Writing a file is not “done.” See [VERIFY.md](./VERIFY.md): prompt policy + `<system-reminder>` injection after test-file writes / failed bash, so the model is nudged to run evidence via `bash` instead of inventing `npm test`.
+
 ## What students should take away
 
 1. Coding assistants are not “the model editing your disk.” They are a **loop** around a model that can request tools.
 2. Trust and safety live in the **executor** (path guards, cwd, what you allow) — not in the LLM’s good intentions.
 3. Adding capability = new schema + new `execute`, or later an MCP server — not a bigger system prompt.
 4. Free NIM makes the loop stay small: few tools, short histories, honest failure when the model skips structured `tool_calls`.
+5. Harness “intelligence” often means **reminders and verification**, not a smarter model.
 
 ## Related code
 

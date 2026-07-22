@@ -23,6 +23,8 @@ export function printBanner(meta: {
   lessonId: string;
   workspaceRoot: string;
   folder: string;
+  sessionId?: string;
+  sessionNote?: string;
 }): void {
   for (const line of WORDMARK.split("\n")) {
     console.log(ansi.cyan(line));
@@ -35,6 +37,10 @@ export function printBanner(meta: {
     `  ${ansi.dim("model")}      ${meta.mode}    ${ansi.dim("lesson")}  ${meta.lessonId}`,
   );
   console.log(`  ${ansi.dim("folder")}     ${meta.folder}`);
+  if (meta.sessionId) {
+    const note = meta.sessionNote ? `  ${ansi.dim(meta.sessionNote)}` : "";
+    console.log(`  ${ansi.dim("session")}    ${meta.sessionId}${note}`);
+  }
   console.log();
   console.log(
     `  ${ansi.dim("Type /help for commands. Enter a message to run a turn.")}\n`,

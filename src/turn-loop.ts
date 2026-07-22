@@ -9,12 +9,16 @@ import type { LessonPlugin } from "./lessons/types.js";
 import { buildSystemPrompt } from "./prompt/build-system-prompt.js";
 import type { Session } from "./session.js";
 import type { ToolRegistry } from "./tools/registry.js";
+import { withReminders } from "./tools/reminders.js";
 
 /** Keep last N non-system messages so free-tier context stays usable */
 export const MAX_MESSAGES = 40;
 
-/** Cap runaway tool loops */
-export const MAX_TOOL_ROUNDS = 8;
+/**
+ * Cap runaway tool loops.
+ * Discovery + install + edit + test + implement often needs >8 rounds on free NIM.
+ */
+export const MAX_TOOL_ROUNDS = 16;
 
 export interface ToolTrace {
   name: string;
@@ -104,7 +108,8 @@ export class TurnLoop {
       }
 
       return {
-        reply: "(stopped: max tool rounds reached)",
+        reply:
+          "(stopped: max tool rounds reached — session is saved; ask me to continue from the last bash/test result)",
         traces,
       };
     } finally {
@@ -145,11 +150,19 @@ export class TurnLoop {
       workspaceRoot: session.workspaceRoot,
     });
 
+    // Harness soft-intelligence: remind the model to verify (docs/VERIFY.md)
+    const contentForModel = withReminders(
+      name,
+      args,
+      result,
+      session.workspaceRoot,
+    );
+
     session.append({
       role: "tool",
       tool_call_id: call.id,
       name,
-      content: result.output,
+      content: contentForModel,
     });
 
     return {
@@ -174,6 +187,12 @@ function summarizeArgs(
   if (typeof args.path === "string") {
     return JSON.stringify({ path: args.path });
   }
+  if (typeof args.command === "string") {
+    const c = args.command.replace(/\s+/g, " ").trim();
+    return JSON.stringify({
+      command: c.length <= 60 ? c : `${c.slice(0, 60)}…`,
+    });
+  }
   try {
     const s = JSON.stringify(args);
     return s.length <= 80 ? s : `${s.slice(0, 80)}…`;
@@ -188,6 +207,11 @@ function summarizeResult(output: string): string {
     const plus = lines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length;
     const minus = lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
     return `diff +${plus} -${minus}`;
+  }
+  const exit = output.match(/^exit_code:\s*(.+)$/m);
+  if (exit) {
+    const body = output.replace(/\s+/g, " ").trim();
+    return `exit ${exit[1]} — ${truncate(body, 80)}`;
   }
   const oneLine = output.replace(/\s+/g, " ").trim();
   if (oneLine.length <= 100) return oneLine;

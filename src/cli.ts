@@ -1,6 +1,6 @@
 /**
  * Claude Code–shaped readline REPL: turns, slash commands, tool traces.
- * See: docs/ARCHITECTURE.md (CLI), README.md
+ * See: docs/ARCHITECTURE.md (CLI), docs/SESSIONS.md, README.md
  */
 
 import "dotenv/config";
@@ -21,13 +21,22 @@ import { ansi, colorizeUnifiedDiff } from "./cli/ansi.js";
 import { printBanner } from "./cli/banner.js";
 import { StatusLine } from "./cli/status-line.js";
 import { Session } from "./session.js";
+import {
+  createSessionId,
+  listSessionSummaries,
+  openSessionStore,
+  SessionStore,
+  type SessionOpenMode,
+} from "./session-store.js";
 import { createDefaultToolRegistry } from "./tools/registry.js";
 import { TurnLoop, type ToolTrace } from "./turn-loop.js";
 
 type ModelMode = "mock" | "nim";
 
 async function main(): Promise<void> {
-  const mode = parseModelMode(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const mode = parseModelMode(argv);
+  const sessionMode = parseSessionMode(argv);
   const workspaceRoot = process.cwd();
   const tools = createDefaultToolRegistry();
   const mock = new MockClient();
@@ -35,7 +44,27 @@ async function main(): Promise<void> {
 
   let lessonId = defaultLessonId();
   let lesson = getLesson(lessonId);
-  const session = new Session({ workspaceRoot, activeLessonId: lessonId });
+
+  let { store, messages, resumed } = await openSessionStore(
+    workspaceRoot,
+    lessonId,
+    sessionMode,
+  );
+
+  // Prefer lesson from resumed summary when present
+  const summary = await store.readSummary();
+  if (summary?.lessonId && getLesson(summary.lessonId)) {
+    lessonId = summary.lessonId;
+    lesson = getLesson(lessonId);
+  }
+
+  let session = new Session({
+    workspaceRoot,
+    activeLessonId: lessonId,
+    id: store.id,
+    store,
+    messages,
+  });
 
   if (lesson) {
     const written = await applyStarterFiles(lesson, workspaceRoot);
@@ -49,6 +78,10 @@ async function main(): Promise<void> {
     lessonId,
     workspaceRoot,
     folder: path.basename(workspaceRoot),
+    sessionId: session.id,
+    sessionNote: resumed
+      ? `resumed (${messages.length} messages)`
+      : "new session",
   });
 
   // for-await over readline (not question()) so piped smoke tests work
@@ -63,10 +96,14 @@ async function main(): Promise<void> {
     console.log(`Commands:
   /lesson [id]  List lessons, or activate one
   /tools        List tools
+  /sessions     List saved sessions (* = active)
+  /new          Start a fresh session (keep old on disk)
   /doctor       Probe NIM endpoint + model (auth vs chat hang)
-  /clear        Clear conversation history
+  /clear        Clear conversation history (same session id)
   /help         Show this help
-  /quit         Exit`);
+  /quit         Exit
+
+Flags: --model mock|nim   --new   --session <id>`);
   };
 
   try {
@@ -98,10 +135,40 @@ async function main(): Promise<void> {
           output.write("> ");
           continue;
         }
+        if (cmd === "sessions") {
+          const all = await listSessionSummaries(workspaceRoot);
+          if (all.length === 0) {
+            console.log("No sessions yet.");
+          } else {
+            for (const s of all) {
+              const mark = s.id === session.id ? "*" : " ";
+              console.log(
+                `${mark} ${s.id}  msgs=${s.messageCount}  lesson=${s.lessonId}  ${s.updatedAt}`,
+              );
+            }
+          }
+          output.write("> ");
+          continue;
+        }
+        if (cmd === "new") {
+          store = new SessionStore(workspaceRoot, createSessionId());
+          await store.init(session.activeLessonId);
+          session = new Session({
+            workspaceRoot,
+            activeLessonId: session.activeLessonId,
+            id: store.id,
+            store,
+            messages: [],
+          });
+          mock.reset();
+          console.log(`New session: ${session.id}`);
+          output.write("> ");
+          continue;
+        }
         if (cmd === "clear") {
           session.clear();
           mock.reset();
-          console.log("History cleared.");
+          console.log(`History cleared (session ${session.id}).`);
           output.write("> ");
           continue;
         }
@@ -144,7 +211,7 @@ async function main(): Promise<void> {
           }
           lessonId = next.id;
           lesson = next;
-          session.activeLessonId = lessonId;
+          session.setLessonId(lessonId);
           const written = await applyStarterFiles(next, workspaceRoot);
           console.log(`Active lesson: ${next.title} (${next.id})`);
           if (written.length) {
@@ -179,7 +246,6 @@ async function main(): Promise<void> {
       try {
         const result = await loop.runTurn(trimmed);
         status.stop();
-        // Traces already printed live; only show the final reply here
         const reply = result.reply;
         if (reply.startsWith("(empty NIM response") || reply.startsWith("(empty model")) {
           console.log(ansi.yellow(reply));
@@ -206,13 +272,22 @@ async function main(): Promise<void> {
 function parseModelMode(argv: string[]): ModelMode {
   const idx = argv.indexOf("--model");
   if (idx >= 0 && argv[idx + 1]) {
-    const v = argv[idx + 1].toLowerCase();
+    const v = argv[idx + 1]!.toLowerCase();
     if (v === "nim") return "nim";
     if (v === "mock") return "mock";
     console.error(`Unknown --model ${argv[idx + 1]}; using mock.`);
   }
   if (argv.includes("--nim")) return "nim";
   return "mock";
+}
+
+function parseSessionMode(argv: string[]): SessionOpenMode {
+  if (argv.includes("--new")) return { kind: "new" };
+  const idx = argv.indexOf("--session");
+  if (idx >= 0 && argv[idx + 1]) {
+    return { kind: "id", id: argv[idx + 1]! };
+  }
+  return { kind: "continue" };
 }
 
 function createModel(mode: ModelMode, mock: MockClient): ModelClient {

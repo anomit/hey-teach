@@ -19,7 +19,7 @@ CLI REPL  →  Session  →  TurnLoop  →  ModelClient (Mock | NIM)
 | Module | Path | Role |
 |--------|------|------|
 | CLI | `src/cli.ts` | Readline REPL, slash commands, tool-call tracing |
-| Session | `src/session.ts` | Conversation history + workspace root + active lesson |
+| Session | `src/session.ts` + `src/session-store.ts` | Conversation history + JSONL persistence (see [SESSIONS.md](./SESSIONS.md)) |
 | TurnLoop | `src/turn-loop.ts` | One turn: model → tools → model… until a reply |
 | ModelClient | `src/model/` | `chat({ messages, tools })` contract; Mock + NIM |
 | Tools | `src/tools/` | `read_file`, `write_file`, `edit_file`, `bash` (edits return unified diffs) |
@@ -37,7 +37,7 @@ CLI REPL  →  Session  →  TurnLoop  →  ModelClient (Mock | NIM)
 
 See [TURN_LOOP.md](./TURN_LOOP.md) for a step-by-step walkthrough that maps 1:1 to code.
 
-**Tools are local; the model only proposes.** We advertise schemas (name + description + JSON params) on each chat call; NIM returns `tool_calls`; the harness executes on disk/shell and sends results back. That propose → execute → observe split — and how it foreshadows MCP — is documented in [TOOLS.md](./TOOLS.md).
+**Tools are local; the model only proposes.** We advertise schemas (name + description + JSON params) on each chat call; NIM returns `tool_calls`; the harness executes on disk/shell and sends results back. That propose → execute → observe split — and how it foreshadows MCP — is documented in [TOOLS.md](./TOOLS.md). After writes/failed bash, the harness may append `<system-reminder>` hints so the model verifies instead of inventing scripts ([VERIFY.md](./VERIFY.md)).
 
 ## Core contracts (tiny on purpose)
 

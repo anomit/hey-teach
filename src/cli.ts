@@ -21,6 +21,12 @@ import { ansi, colorizeUnifiedDiff } from "./cli/ansi.js";
 import { printBanner } from "./cli/banner.js";
 import { StatusLine } from "./cli/status-line.js";
 import { Session } from "./session.js";
+import { exportTrajectories } from "./export/trajectories.js";
+import {
+  formatOutcomeColumn,
+  isOutcome,
+  OUTCOMES,
+} from "./session-outcome.js";
 import {
   createSessionId,
   listSessionSummaries,
@@ -33,6 +39,11 @@ import { TurnLoop, type ToolTrace } from "./turn-loop.js";
 
 type ModelMode = "mock" | "nim";
 
+function teacherModelLabel(mode: ModelMode): string {
+  if (mode === "mock") return "mock";
+  return process.env.NIM_MODEL?.trim() || "meta/llama-3.1-8b-instruct";
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const mode = parseModelMode(argv);
@@ -41,6 +52,7 @@ async function main(): Promise<void> {
   const tools = createDefaultToolRegistry();
   const mock = new MockClient();
   const model = createModel(mode, mock);
+  const teacherModel = teacherModelLabel(mode);
 
   let lessonId = defaultLessonId();
   let lesson = getLesson(lessonId);
@@ -49,6 +61,7 @@ async function main(): Promise<void> {
     workspaceRoot,
     lessonId,
     sessionMode,
+    { teacherModel },
   );
 
   // Prefer lesson from resumed summary when present
@@ -94,16 +107,20 @@ async function main(): Promise<void> {
 
   const help = () => {
     console.log(`Commands:
-  /lesson [id]  List lessons, or activate one
-  /tools        List tools
-  /sessions     List saved sessions (* = active)
-  /new          Start a fresh session (keep old on disk)
-  /doctor       Probe NIM endpoint + model (auth vs chat hang)
-  /clear        Clear conversation history (same session id)
-  /help         Show this help
-  /quit         Exit
+  /lesson [id]     List lessons, or activate one
+  /tools           List tools
+  /sessions        List saved sessions (* = active)
+  /outcome <label> Set outcome: ${OUTCOMES.join("|")} [note]
+  /evaluate        Run lesson grader; update outcome
+  /export [filter] Export trajectories (active|all|green|red|…)
+  /new             Start a fresh session (keep old on disk)
+  /doctor          Probe NIM endpoint + model
+  /clear           Clear conversation history (same session id)
+  /help            Show this help
+  /quit            Exit
 
-Flags: --model mock|nim   --new   --session <id>`);
+Flags: --model mock|nim   --new   --session <id>
+Headless export: npm run export -- --all`);
   };
 
   try {
@@ -142,17 +159,86 @@ Flags: --model mock|nim   --new   --session <id>`);
           } else {
             for (const s of all) {
               const mark = s.id === session.id ? "*" : " ";
+              const oc = formatOutcomeColumn(s.outcome);
               console.log(
-                `${mark} ${s.id}  msgs=${s.messageCount}  lesson=${s.lessonId}  ${s.updatedAt}`,
+                `${mark} ${s.id}  ${oc.padEnd(9)}  msgs=${s.messageCount}  lesson=${s.lessonId}  ${s.updatedAt}`,
               );
             }
           }
           output.write("> ");
           continue;
         }
+        if (cmd === "outcome") {
+          const [label, ...noteParts] = arg.split(/\s+/);
+          if (!label || !isOutcome(label)) {
+            console.log(`Usage: /outcome ${OUTCOMES.join("|")} [note]`);
+            output.write("> ");
+            continue;
+          }
+          const note = noteParts.join(" ").trim() || undefined;
+          const updated = store.setOutcome(label, "manual", note);
+          console.log(
+            `Outcome → ${updated.outcome} (manual)${note ? ` — ${note}` : ""}`,
+          );
+          output.write("> ");
+          continue;
+        }
+        if (cmd === "evaluate") {
+          if (!lesson?.evaluate) {
+            console.log("Active lesson has no evaluate() grader.");
+            output.write("> ");
+            continue;
+          }
+          const status = new StatusLine();
+          status.start(`Evaluating ${lesson.id}…`);
+          try {
+            const result = await lesson.evaluate({ workspaceRoot });
+            status.stop();
+            const outcome = result.passed ? "green" : "red";
+            store.setOutcome(outcome, "lesson_evaluate", result.feedback.slice(0, 200));
+            console.log(
+              result.passed
+                ? ansi.green(`evaluate → green`)
+                : ansi.red(`evaluate → red`),
+            );
+            console.log(result.feedback.slice(0, 600));
+          } catch (err) {
+            status.stop();
+            store.setOutcome(
+              "error",
+              "lesson_evaluate",
+              err instanceof Error ? err.message : String(err),
+            );
+            console.error(
+              ansi.red(err instanceof Error ? err.message : String(err)),
+            );
+          }
+          output.write("> ");
+          continue;
+        }
+        if (cmd === "export") {
+          const filter = arg || "active";
+          try {
+            const result = await exportTrajectories({
+              workspaceRoot,
+              activeSessionId: session.id,
+              filter,
+            });
+            console.log(
+              `Exported ${result.count} session(s) → ${result.path}`,
+            );
+            console.log(`Outcomes: ${JSON.stringify(result.outcomes)}`);
+          } catch (err) {
+            console.error(
+              ansi.red(err instanceof Error ? err.message : String(err)),
+            );
+          }
+          output.write("> ");
+          continue;
+        }
         if (cmd === "new") {
           store = new SessionStore(workspaceRoot, createSessionId());
-          await store.init(session.activeLessonId);
+          await store.init(session.activeLessonId, { teacherModel });
           session = new Session({
             workspaceRoot,
             activeLessonId: session.activeLessonId,

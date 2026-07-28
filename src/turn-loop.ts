@@ -7,6 +7,7 @@ import type { Message, ModelClient, ToolCall } from "./model/types.js";
 import { modelLabel } from "./model/types.js";
 import type { LessonPlugin } from "./lessons/types.js";
 import { buildSystemPrompt } from "./prompt/build-system-prompt.js";
+import { applyBashInfer } from "./outcome/bash-infer.js";
 import type { Session } from "./session.js";
 import type { ToolRegistry } from "./tools/registry.js";
 import { withReminders } from "./tools/reminders.js";
@@ -164,6 +165,10 @@ export class TurnLoop {
       name,
       content: contentForModel,
     });
+
+    if (name === "bash") {
+      applyBashInfer(session.getStore(), result.output);
+    }
 
     return {
       name,

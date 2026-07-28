@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node --import tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "export": "node --import tsx src/export-cli.ts"
   },
   "engines": {
     "node": ">=20"

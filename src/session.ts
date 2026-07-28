@@ -44,4 +44,8 @@ export class Session {
     this.activeLessonId = lessonId;
     this.store?.updateLessonId(lessonId);
   }
+
+  getStore(): SessionStore | undefined {
+    return this.store;
+  }
 }

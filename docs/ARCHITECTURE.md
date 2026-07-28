@@ -19,7 +19,8 @@ CLI REPL  →  Session  →  TurnLoop  →  ModelClient (Mock | NIM)
 | Module | Path | Role |
 |--------|------|------|
 | CLI | `src/cli.ts` | Readline REPL, slash commands, tool-call tracing |
-| Session | `src/session.ts` + `src/session-store.ts` | Conversation history + JSONL persistence (see [SESSIONS.md](./SESSIONS.md)) |
+| Session | `src/session.ts` + `src/session-store.ts` | Conversation history + JSONL persistence + outcomes (see [SESSIONS.md](./SESSIONS.md), [EXPORT.md](./EXPORT.md)) |
+| Export | `src/export/` | Labeled trajectory JSONL for later SFT |
 | TurnLoop | `src/turn-loop.ts` | One turn: model → tools → model… until a reply |
 | ModelClient | `src/model/` | `chat({ messages, tools })` contract; Mock + NIM |
 | Tools | `src/tools/` | `read_file`, `write_file`, `edit_file`, `bash` (edits return unified diffs) |

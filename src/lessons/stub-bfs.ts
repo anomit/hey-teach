@@ -1,9 +1,13 @@
 /**
- * Minimal lesson plugin: metadata + prompt + tiny starter file map (no grader).
- * See: docs/LESSON_PLUGINS.md
+ * Minimal lesson plugin: metadata + prompt + starter files + evaluate.
+ * See: docs/LESSON_PLUGINS.md, docs/EXPORT.md
  */
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type { LessonPlugin } from "./types.js";
+
+const execFileAsync = promisify(execFile);
 
 export const stubBfsLesson: LessonPlugin = {
   id: "stub-bfs",
@@ -23,5 +27,34 @@ export function bfs(graph: Graph, start: string): string[] {
   return [];
 }
 `,
+  },
+  async evaluate(ctx) {
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        "npx",
+        ["vitest", "run", "lessons/bfs/graph.test.ts"],
+        {
+          cwd: ctx.workspaceRoot,
+          timeout: 60_000,
+          maxBuffer: 256 * 1024,
+          env: process.env,
+        },
+      );
+      const snippet = [stdout, stderr].filter(Boolean).join("\n").trim();
+      return {
+        passed: true,
+        feedback: snippet.slice(0, 800) || "All BFS tests passed.",
+      };
+    } catch (err) {
+      const e = err as { stdout?: string; stderr?: string; message?: string };
+      const snippet = [e.stdout, e.stderr, e.message]
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+      return {
+        passed: false,
+        feedback: snippet.slice(0, 800) || "BFS tests failed.",
+      };
+    }
   },
 };

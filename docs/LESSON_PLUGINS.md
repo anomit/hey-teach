@@ -13,7 +13,7 @@ Defined in `src/lessons/types.ts`:
 | `topics` | yes | Tags for discovery (`/lesson` listing) |
 | `systemPromptAddon` | yes | Text appended to the system prompt when active |
 | `starterFiles` | no | Map of relative path → file contents written on lesson select |
-| `evaluate` | no | Stub for future graders; the CLI does not call this yet |
+| `evaluate` | no | Optional grader; CLI `/evaluate` calls it and writes session outcome (`green`/`red`) |
 
 The **core never hardcodes** Dijkstra, BFS, or any lesson body. It only loads plugins from the registry.
 
@@ -35,7 +35,7 @@ The turn loop and tools stay unchanged.
 - A short system-prompt addon that frames the exercise
 - A tiny starter file map (e.g. `lessons/bfs/graph.ts` skeleton)
 
-No grader. No full curriculum content.
+`stub-bfs` ships an `evaluate()` that runs `npx vitest run lessons/bfs/graph.test.ts`. See [EXPORT.md](./EXPORT.md).
 
 ## Adding a Dijkstra lesson (no core edits)
 

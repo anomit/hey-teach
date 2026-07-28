@@ -17,7 +17,7 @@ Pattern borrowed conceptually from mature agents (e.g. grok-build’s JSONL sess
 | File | Role |
 |------|------|
 | `messages.jsonl` | Source of truth for the model-facing thread |
-| `summary.json` | Index for `/sessions` and continue-most-recent |
+| `summary.json` | Index + **outcome labels** + teacherModel (see [EXPORT.md](./EXPORT.md)) |
 
 Atomic rewrite for `summary.json` (temp + rename). Append-only for JSONL.
 
@@ -28,7 +28,10 @@ Atomic rewrite for `summary.json` (temp + rename). Append-only for JSONL.
 | (default) | Resume most recent session in this workspace, or create one |
 | `--new` | Always start a fresh session |
 | `--session <id>` | Resume that id (error if missing) |
-| `/sessions` | List sessions (newest first); `*` = active |
+| `/sessions` | List sessions (newest first); `*` = active; shows outcome |
+| `/outcome <label>` | Manual outcome label (`green` / `red` / …) |
+| `/evaluate` | Run lesson grader; set outcome |
+| `/export [filter]` | Write trajectories JSONL ([EXPORT.md](./EXPORT.md)) |
 | `/clear` | Wipe in-memory + on-disk messages; **keep** the same session id |
 | `/new` | Start a new session id mid-REPL (old one stays on disk) |
 
@@ -52,3 +55,4 @@ System prompts are **not** stored — rebuilt each turn from the active lesson (
 - Cloud sync
 - Rewind checkpoints
 - Separate “UI event log” vs chat history (grok-build splits these; we keep one JSONL for clarity)
+- Training / GGUF conversion (export only — [EXPORT.md](./EXPORT.md))

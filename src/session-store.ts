@@ -10,6 +10,7 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import type { Message } from "./model/types.js";
 import type { Outcome, OutcomeSource } from "./session-outcome.js";
+import { snapForkIndex } from "./session-fork.js";
 
 export const SESSIONS_DIRNAME = ".hey-teach";
 
@@ -24,6 +25,17 @@ export interface SessionSummary {
   outcomeNote?: string;
   outcomeAt?: string;
   teacherModel?: string;
+  parentId?: string;
+  /** Inclusive end of the copied prefix (0-based JSONL index). */
+  forkedAtIndex?: number;
+}
+
+export interface ForkResult {
+  store: SessionStore;
+  messages: Message[];
+  requestedIndex: number;
+  forkedAtIndex: number;
+  snapped: boolean;
 }
 
 export function sessionsRoot(workspaceRoot: string): string {
@@ -114,6 +126,8 @@ export class SessionStore {
       outcomeNote: prev?.outcomeNote,
       outcomeAt: prev?.outcomeAt,
       teacherModel: prev?.teacherModel,
+      parentId: prev?.parentId,
+      forkedAtIndex: prev?.forkedAtIndex,
       ...rest,
       updatedAt: now,
     };
@@ -171,6 +185,38 @@ export class SessionStore {
       outcomeNote: note,
       outcomeAt: new Date().toISOString(),
     });
+  }
+
+  /**
+   * Copy prefix 0..n into a new session. Does not mutate this store.
+   * `fromIndex` omitted = HEAD. Snaps back from an incomplete tool round.
+   */
+  async fork(fromIndex?: number): Promise<ForkResult> {
+    const messages = await this.loadMessages();
+    const requested =
+      fromIndex === undefined ? messages.length - 1 : fromIndex;
+    const snapped = snapForkIndex(messages, requested);
+    const prefix = messages.slice(0, snapped + 1);
+    const parent = this.getSummarySync();
+    const child = new SessionStore(this.workspaceRoot, createSessionId());
+    await child.init(parent?.lessonId ?? "unknown", {
+      teacherModel: parent?.teacherModel,
+    });
+    const body = prefix.map((m) => JSON.stringify(m)).join("\n") + "\n";
+    fs.writeFileSync(child.messagesPath, body, "utf8");
+    child.patchSummary({
+      parentId: this.id,
+      forkedAtIndex: snapped,
+      messageCount: prefix.length,
+      outcome: "unlabeled",
+    });
+    return {
+      store: child,
+      messages: prefix,
+      requestedIndex: requested,
+      forkedAtIndex: snapped,
+      snapped: snapped !== requested,
+    };
   }
 }
 

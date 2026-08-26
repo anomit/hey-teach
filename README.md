@@ -37,7 +37,7 @@ Hits `https://integrate.api.nvidia.com/v1` via the OpenAI SDK. Tool-calling qual
 
 ## Sessions and export
 
-Conversation threads persist under `.hey-teach/sessions/` (gitignored). Default: resume the most recent session. `--new` starts fresh; `--session <id>` resumes a specific one.
+Conversation threads persist under `.hey-teach/sessions/` (gitignored). Default: resume the most recent session **and reprint numbered history**. `--new` starts fresh; `--session <id>` resumes a specific one. `/fork [n]` copies a prefix into a new session id (workspace files are not rolled back).
 
 Label outcomes (`/outcome`, `/evaluate`, or automatic bash test inference) and export fine-tune-ready JSONL:
 
@@ -53,7 +53,9 @@ See [SESSIONS.md](docs/SESSIONS.md) and [EXPORT.md](docs/EXPORT.md).
 |---------|--------|
 | `/lesson [id]` | List lessons, or activate one (writes missing starter files) |
 | `/tools` | List tools |
-| `/sessions` | List saved sessions (with outcome) |
+| `/sessions` | Session tree (* = active, outcome, fork@n) |
+| `/history` | Numbered thread (0-based; pick `n` for `/fork`) |
+| `/fork [n]` | Branch from index `n` (or HEAD); switch to the child |
 | `/outcome <label>` | Manual outcome: green / red / abandoned / error / unlabeled |
 | `/evaluate` | Run lesson grader; set outcome |
 | `/export [filter]` | Export trajectories (active, all, or by outcome) |

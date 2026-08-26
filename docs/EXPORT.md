@@ -39,6 +39,8 @@ One JSON object per session, JSONL file:
   "outcome": "red",
   "outcomeSource": "bash_infer",
   "teacherModel": "mistralai/mistral-medium-3.5-128b",
+  "parentId": "2026-07-20T18-00-00-aaa111",
+  "forkedAtIndex": 7,
   "exportedAt": "...",
   "messageCount": 29,
   "messages": [ /* OpenAI-shaped roles; system-reminder blocks stripped */ ]
@@ -49,6 +51,8 @@ Default path: `.hey-teach/exports/trajectories-<stamp>.jsonl` (gitignored).
 
 `<system-reminder>` blocks are stripped from tool messages so training data teaches **behavior**, not dependence on harness nags.
 
+`parentId` and `forkedAtIndex` are included when the session was created by `/fork`. Siblings that share a prefix and diverge are useful later (contrastive pairs); this repo does not mine DPO pairs.
+
 ## Commands
 
 | Command | Behavior |
@@ -58,7 +62,7 @@ Default path: `.hey-teach/exports/trajectories-<stamp>.jsonl` (gitignored).
 | `/export` | Active session only |
 | `/export all` | Every session |
 | `/export green` | Filter by outcome |
-| `/sessions` | Lists outcome column |
+| `/sessions` | Tree + outcome column; `fork@n` on children |
 
 Headless:
 

@@ -8,7 +8,7 @@ Pattern borrowed conceptually from mature agents (e.g. grok-build’s JSONL sess
 
 ```
 .hey-teach/sessions/<session-id>/
-  summary.json      # id, lessonId, timestamps, messageCount
+  summary.json      # id, lessonId, timestamps, messageCount, lineage
   messages.jsonl    # one Message per line (user / assistant / tool)
 ```
 
@@ -17,23 +17,36 @@ Pattern borrowed conceptually from mature agents (e.g. grok-build’s JSONL sess
 | File | Role |
 |------|------|
 | `messages.jsonl` | Source of truth for the model-facing thread |
-| `summary.json` | Index + **outcome labels** + teacherModel (see [EXPORT.md](./EXPORT.md)) |
+| `summary.json` | Index + **outcome labels** + teacherModel + optional `parentId` / `forkedAtIndex` (see [EXPORT.md](./EXPORT.md)) |
 
-Atomic rewrite for `summary.json` (temp + rename). Append-only for JSONL.
+Atomic rewrite for `summary.json` (temp + rename). Append-only for JSONL. A fork **copies** a prefix into a new id; the parent log is never truncated.
 
 ## CLI
 
 | Flag / command | Behavior |
 |----------------|----------|
-| (default) | Resume most recent session in this workspace, or create one |
+| (default) | Resume most recent session in this workspace, or create one. **Reprints numbered history** after the banner when the log is non-empty. |
 | `--new` | Always start a fresh session |
-| `--session <id>` | Resume that id (error if missing) |
-| `/sessions` | List sessions (newest first); `*` = active; shows outcome |
+| `--session <id>` | Resume that id (error if missing); same history reprint |
+| `/history` | Print the numbered thread (0-based JSONL indices) |
+| `/fork [n]` | Copy prefix through index `n` (or HEAD) into a new session id; switch the REPL to the child |
+| `/sessions` | Tree: parent → children; `*` = active; outcome column; `fork@n` on children |
 | `/outcome <label>` | Manual outcome label (`green` / `red` / …) |
 | `/evaluate` | Run lesson grader; set outcome |
 | `/export [filter]` | Write trajectories JSONL ([EXPORT.md](./EXPORT.md)) |
-| `/clear` | Wipe in-memory + on-disk messages; **keep** the same session id |
-| `/new` | Start a new session id mid-REPL (old one stays on disk) |
+| `/clear` | Wipe in-memory + on-disk messages; **keep** the same session id (not rewind) |
+| `/new` | Start a new **empty** session id mid-REPL (old one stays on disk) |
+
+`/fork` is a branch, not an in-place truncate. `/clear` stays a wipe of the current id.
+
+### Fork details
+
+- Child `summary.json` gets `parentId` and `forkedAtIndex` (inclusive, 0-based).
+- Child **outcome** starts `unlabeled` — it does not inherit the parent’s green/red.
+- If `n` lands mid tool-round (assistant `tool_calls` without matching `tool` results), the index **snaps back** to the last valid OpenAI prefix. The CLI prints `snapped n → n'`.
+- **Workspace files are not copied or rolled back.** The child’s transcript is a prefix; the disk is still the parent’s latest tree.
+
+The turn loop still trims with a hard **last-N** window (`trimMessages` in `turn-loop.ts`). Forks copy prefixes on disk; the in-flight prompt may still slide. Prefix-stable caching is a follow-up.
 
 ## What is stored
 
@@ -46,13 +59,18 @@ System prompts are **not** stored — rebuilt each turn from the active lesson (
 | Piece | Path |
 |-------|------|
 | In-memory session | `src/session.ts` |
-| Disk store | `src/session-store.ts` |
+| Disk store + `fork()` | `src/session-store.ts` |
+| Snap incomplete tool pairs | `src/session-fork.ts` |
+| History printer | `src/cli/history.ts` |
+| `/sessions` tree | `src/cli/session-tree.ts` |
 | Resume wiring | `src/cli.ts` |
 
 ## Not yet (on purpose)
 
 - Compaction / summarization of long threads
 - Cloud sync
-- Rewind checkpoints
+- In-place rewind / truncate billed as rewind (use `/fork`, not `/clear`)
+- Prefix-stable turn-loop window (trees are on disk; trim is still last-N)
+- Workspace / git snapshots on fork
 - Separate “UI event log” vs chat history (grok-build splits these; we keep one JSONL for clarity)
 - Training / GGUF conversion (export only — [EXPORT.md](./EXPORT.md))

@@ -21,6 +21,8 @@ export interface TrajectoryRecord {
   outcome: Outcome;
   outcomeSource?: string;
   teacherModel?: string;
+  parentId?: string;
+  forkedAtIndex?: number;
   exportedAt: string;
   messageCount: number;
   messages: Message[];
@@ -72,6 +74,10 @@ export async function collectTrajectories(
       outcome: summary.outcome ?? "unlabeled",
       outcomeSource: summary.outcomeSource,
       teacherModel: summary.teacherModel,
+      ...(summary.parentId ? { parentId: summary.parentId } : {}),
+      ...(summary.forkedAtIndex !== undefined
+        ? { forkedAtIndex: summary.forkedAtIndex }
+        : {}),
       exportedAt,
       messageCount: messages.length,
       messages,

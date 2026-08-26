@@ -19,11 +19,12 @@ import {
 } from "./lessons/registry.js";
 import { ansi, colorizeUnifiedDiff } from "./cli/ansi.js";
 import { printBanner } from "./cli/banner.js";
+import { formatHistory } from "./cli/history.js";
+import { formatSessionTree } from "./cli/session-tree.js";
 import { StatusLine } from "./cli/status-line.js";
 import { Session } from "./session.js";
 import { exportTrajectories } from "./export/trajectories.js";
 import {
-  formatOutcomeColumn,
   isOutcome,
   OUTCOMES,
 } from "./session-outcome.js";
@@ -97,6 +98,11 @@ async function main(): Promise<void> {
       : "new session",
   });
 
+  if (resumed && messages.length > 0) {
+    console.log(formatHistory(messages));
+    console.log();
+  }
+
   // for-await over readline (not question()) so piped smoke tests work
   const rl = readline.createInterface({
     input,
@@ -109,7 +115,9 @@ async function main(): Promise<void> {
     console.log(`Commands:
   /lesson [id]     List lessons, or activate one
   /tools           List tools
-  /sessions        List saved sessions (* = active)
+  /sessions        Session tree (* = active)
+  /history         Numbered thread (0-based; for /fork)
+  /fork [n]        Branch from index n (or HEAD); switch to child
   /outcome <label> Set outcome: ${OUTCOMES.join("|")} [note]
   /evaluate        Run lesson grader; update outcome
   /export [filter] Export trajectories (active|all|green|red|…)
@@ -157,13 +165,54 @@ Headless export: npm run export -- --all`);
           if (all.length === 0) {
             console.log("No sessions yet.");
           } else {
-            for (const s of all) {
-              const mark = s.id === session.id ? "*" : " ";
-              const oc = formatOutcomeColumn(s.outcome);
+            for (const line of formatSessionTree(all, session.id)) {
+              console.log(line);
+            }
+          }
+          output.write("> ");
+          continue;
+        }
+        if (cmd === "history") {
+          console.log(formatHistory(session.messages));
+          output.write("> ");
+          continue;
+        }
+        if (cmd === "fork") {
+          let n: number | undefined;
+          if (arg) {
+            n = Number(arg);
+            if (!Number.isInteger(n)) {
+              console.log("Usage: /fork [n]  (n = 0-based message index)");
+              output.write("> ");
+              continue;
+            }
+          }
+          try {
+            const result = await store.fork(n);
+            if (result.snapped) {
               console.log(
-                `${mark} ${s.id}  ${oc.padEnd(9)}  msgs=${s.messageCount}  lesson=${s.lessonId}  ${s.updatedAt}`,
+                `snapped ${result.requestedIndex} → ${result.forkedAtIndex}`,
               );
             }
+            store = result.store;
+            session = new Session({
+              workspaceRoot,
+              activeLessonId: session.activeLessonId,
+              id: store.id,
+              store,
+              messages: result.messages,
+            });
+            mock.reset();
+            console.log(
+              `Forked → ${session.id}  (prefix 0..${result.forkedAtIndex}, ${result.messages.length} messages)`,
+            );
+            console.log(
+              "Workspace files are not rolled back — disk is still the parent’s latest tree.",
+            );
+          } catch (err) {
+            console.error(
+              ansi.red(err instanceof Error ? err.message : String(err)),
+            );
           }
           output.write("> ");
           continue;

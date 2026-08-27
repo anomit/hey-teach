@@ -1,5 +1,7 @@
 # Sessions (conversation persistence)
 
+Operator steps (resume, `/history`, `/fork`): [USAGE.md](./USAGE.md). Agent invariants: [AGENT_HANDOFF.md](./AGENT_HANDOFF.md).
+
 Why this exists: without a thread, every turn is amnesia — the model forgets it already wrote `graph.test.ts`. Persistence turns tool calls into a project.
 
 Pattern borrowed conceptually from mature agents (e.g. grok-build’s JSONL session dirs): **append-only message log + small summary**, resume by id or “most recent.”

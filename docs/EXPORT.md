@@ -1,5 +1,7 @@
 # Export and outcome labeling
 
+Commands to run: [USAGE.md](./USAGE.md) §§3–5. Schema below. Agent rules: [AGENT_HANDOFF.md](./AGENT_HANDOFF.md).
+
 Sessions are not only for resume — they are a **labeled trajectory store** for later fine-tuning (SFT / QLoRA). Capture LLM ↔ harness interactions on CS lessons, label how they ended, export JSONL.
 
 ## Flywheel

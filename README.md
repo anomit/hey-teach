@@ -4,7 +4,11 @@ Proto-framework to learn about harnesses and other AI meta for programmers.
 
 Minimal TypeScript/Node turn-based coding harness. Lessons are plugins; the harness teaches how agent loops work under free NVIDIA NIM constraints.
 
-**Read first:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/TURN_LOOP.md](docs/TURN_LOOP.md) · [docs/TOOLS.md](docs/TOOLS.md) · [docs/SESSIONS.md](docs/SESSIONS.md) · [docs/VERIFY.md](docs/VERIFY.md) · [docs/EXPORT.md](docs/EXPORT.md)
+**Run it:** [docs/USAGE.md](docs/USAGE.md) — first REPL, stub-bfs, fork, export.
+
+**Incoming agents:** [AGENTS.md](AGENTS.md) then [docs/AGENT_HANDOFF.md](docs/AGENT_HANDOFF.md).
+
+**Concepts:** [docs/README.md](docs/README.md) indexes architecture, turn loop, tools, sessions, export.
 
 ## Requirements
 
@@ -45,7 +49,7 @@ Label outcomes (`/outcome`, `/evaluate`, or automatic bash test inference) and e
 npm run export -- --all
 ```
 
-See [SESSIONS.md](docs/SESSIONS.md) and [EXPORT.md](docs/EXPORT.md).
+Step-by-step: [USAGE.md](docs/USAGE.md). Semantics: [SESSIONS.md](docs/SESSIONS.md), [EXPORT.md](docs/EXPORT.md).
 
 ## Slash commands
 

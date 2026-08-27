@@ -1,5 +1,7 @@
 # Lesson plugins
 
+Checklist for adding a lesson: [AGENT_HANDOFF.md](./AGENT_HANDOFF.md). How to run `stub-bfs`: [USAGE.md](./USAGE.md) §3.
+
 Curriculum plugs into the harness without touching the turn loop.
 
 ## Contract

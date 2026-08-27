@@ -2,6 +2,8 @@
 
 Source of truth for the harness layout. Read it alongside `src/turn-loop.ts` and `src/cli.ts`.
 
+How to run the REPL: [USAGE.md](./USAGE.md). Doc index: [README.md](./README.md). Next coding agent: [../AGENTS.md](../AGENTS.md).
+
 ## Intent
 
 A **minimal turn-based coding harness** that teaches how agent loops work under free NIM constraints. Lessons are plugins; the harness itself is the teaching object. Not a full agent product.

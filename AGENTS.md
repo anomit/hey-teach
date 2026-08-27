@@ -64,7 +64,7 @@ npm run export -- --all
 | System prompt policy | `src/prompt/build-system-prompt.ts` |
 | Reminders | `src/tools/reminders.ts` |
 
-Tests: `src/**/*.test.ts` (excluded from `tsc`). Lesson tests: `lessons/bfs/graph.test.ts`.
+Tests: `src/**/*.test.ts` (excluded from `tsc`). Lesson tests: `lessons/bfs/graph.test.ts`, `lessons/dfs/graph.test.ts`.
 
 ## Docs to update when you change behavior
 

@@ -27,7 +27,7 @@ Stored on `summary.json`:
 ### How labels get set
 
 1. **`bash_infer`** — after a `bash` tool result that looks like a test run (vitest / jest / npm test), the harness sets `green` or `red`. Does **not** overwrite `manual`, `abandoned`, or `error`.
-2. **`lesson_evaluate`** — `/evaluate` runs the active lesson’s `evaluate()` (stub-bfs runs `npx vitest run lessons/bfs/graph.test.ts`).
+2. **`lesson_evaluate`** — `/evaluate` calls `evaluate()` on the current lesson plugin (if any) and stamps this session. The harness does not pick a test file; `stub-bfs` / `stub-dfs` hardcode vitest on their `lessons/<algo>/graph.test.ts`. An empty session can be green if those tests already pass.
 3. **`manual`** — `/outcome green|red|abandoned|error|unlabeled [note]` always wins until you change it again.
 
 ## Export format
@@ -60,7 +60,7 @@ Default path: `.hey-teach/exports/trajectories-<stamp>.jsonl` (gitignored).
 | Command | Behavior |
 |---------|----------|
 | `/outcome <label> [note]` | Manual label |
-| `/evaluate` | Lesson grader → green/red |
+| `/evaluate` | Call lesson `evaluate()` → green/red |
 | `/export` | Active session only |
 | `/export all` | Every session |
 | `/export green` | Filter by outcome |

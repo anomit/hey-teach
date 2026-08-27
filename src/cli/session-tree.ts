@@ -3,7 +3,9 @@
  * See: docs/SESSIONS.md
  */
 
+import { ansi } from "./ansi.js";
 import { formatOutcomeColumn } from "../session-outcome.js";
+import type { Outcome } from "../session-outcome.js";
 import type { SessionSummary } from "../session-store.js";
 
 export interface SessionTreeNode {
@@ -56,10 +58,21 @@ export function formatSessionTreeLine(
   const { summary: s, depth } = node;
   const mark = s.id === activeId ? "*" : " ";
   const indent = depth === 0 ? "" : `${"  ".repeat(depth)}└ `;
-  const oc = formatOutcomeColumn(s.outcome).padEnd(9);
+  const oc = paintOutcome(
+    s.outcome,
+    formatOutcomeColumn(s.outcome, s.outcomeSource).padEnd(16),
+  );
   const fork =
     s.forkedAtIndex !== undefined ? `  fork@${s.forkedAtIndex}` : "";
   return `${mark} ${indent}${s.id}  ${oc}  msgs=${s.messageCount}  lesson=${s.lessonId}${fork}`;
+}
+
+function paintOutcome(outcome: Outcome | undefined, padded: string): string {
+  const o = outcome ?? "unlabeled";
+  if (o === "green") return ansi.green(padded);
+  if (o === "red" || o === "error") return ansi.red(padded);
+  if (o === "abandoned") return ansi.yellow(padded);
+  return ansi.dim(padded);
 }
 
 export function formatSessionTree(

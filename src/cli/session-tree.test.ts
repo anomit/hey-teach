@@ -76,6 +76,32 @@ describe("formatSessionTree", () => {
     expect(lines[0]).toMatch(/^ {2}aaa {2}green/);
     expect(lines[1]).toContain("*");
     expect(lines[1]).toContain("└ bbb");
+    expect(lines[1]).toContain("unlabeled");
     expect(lines[1]).toContain("fork@7");
+  });
+
+  it("shows outcome source and unlabeled instead of '-'", () => {
+    const lines = formatSessionTree(
+      [
+        summary({
+          id: "empty-green",
+          outcome: "green",
+          outcomeSource: "lesson_evaluate",
+          messageCount: 0,
+        }),
+        summary({
+          id: "work",
+          outcome: "unlabeled",
+          messageCount: 29,
+          updatedAt: "2026-08-26T11:00:00.000Z",
+        }),
+      ],
+      "work",
+    );
+    expect(lines[0]).toContain("green/evaluate");
+    expect(lines[0]).toContain("msgs=0");
+    expect(lines[1]).toContain("unlabeled");
+    expect(lines[1]).toContain("msgs=29");
+    expect(lines.join("\n")).not.toMatch(/\s-\s/);
   });
 });

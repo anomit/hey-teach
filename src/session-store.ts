@@ -165,7 +165,10 @@ export class SessionStore {
       createdAt: prev?.createdAt ?? now,
       updatedAt: now,
       messageCount: 0,
-      outcome: prev?.outcome ?? "unlabeled",
+      outcome: "unlabeled",
+      outcomeSource: undefined,
+      outcomeNote: undefined,
+      outcomeAt: undefined,
     };
     writeJsonAtomicSync(this.summaryPath, summary);
   }

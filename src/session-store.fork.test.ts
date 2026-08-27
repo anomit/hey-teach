@@ -86,3 +86,20 @@ describe("SessionStore.fork", () => {
     expect(snapped.messages[0]?.role).toBe("user");
   });
 });
+
+describe("SessionStore.clearMessages", () => {
+  it("wipes the log and resets outcome to unlabeled", async () => {
+    const root = tmpWorkspace();
+    const store = new SessionStore(root, "clear-me");
+    await store.init("stub-bfs");
+    store.appendMessage({ role: "user", content: "hi" }, "stub-bfs");
+    store.setOutcome("green", "lesson_evaluate", "tests passed");
+    store.clearMessages("stub-bfs");
+    expect(await store.loadMessages()).toEqual([]);
+    const summary = store.getSummarySync();
+    expect(summary?.messageCount).toBe(0);
+    expect(summary?.outcome).toBe("unlabeled");
+    expect(summary?.outcomeSource).toBeUndefined();
+    expect(summary?.outcomeNote).toBeUndefined();
+  });
+});

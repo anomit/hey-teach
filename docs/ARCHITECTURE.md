@@ -26,7 +26,7 @@ CLI REPL  →  Session  →  TurnLoop  →  ModelClient (Mock | NIM)
 | TurnLoop | `src/turn-loop.ts` | One turn: model → tools → model… until a reply |
 | ModelClient | `src/model/` | `chat({ messages, tools })` contract; Mock + NIM |
 | Tools | `src/tools/` | `read_file`, `write_file`, `edit_file`, `bash` (edits return unified diffs) |
-| Lessons | `src/lessons/` | Plugin registry; ships `stub-bfs` as the example lesson |
+| Lessons | `src/lessons/` | Plugin registry; ships `stub-bfs` (default) and `stub-dfs` |
 | Prompt | `src/prompt/build-system-prompt.ts` | Base instructions + lesson addon |
 
 ## Data flow (one user message)

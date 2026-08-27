@@ -7,6 +7,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { LessonPlugin } from "./types.js";
 import { stubBfsLesson } from "./stub-bfs.js";
+import { stubDfsLesson } from "./stub-dfs.js";
 
 const lessons = new Map<string, LessonPlugin>();
 
@@ -15,6 +16,7 @@ function register(plugin: LessonPlugin): void {
 }
 
 register(stubBfsLesson);
+register(stubDfsLesson);
 
 export function listLessons(): LessonPlugin[] {
   return [...lessons.values()];

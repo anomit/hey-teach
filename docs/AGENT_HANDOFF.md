@@ -14,7 +14,7 @@ Hey Teach is a **readable** turn-based coding harness for teaching agent loops u
 | Mock | `src/model/mock-client.ts` — first user turn → `read_file README.md`, then text |
 | NIM | `src/model/nim-client.ts` — OpenAI SDK → `https://integrate.api.nvidia.com/v1` |
 | Tools | Exactly four: `read_file`, `write_file`, `edit_file`, `bash`. Path escape rejected in `src/tools/path-guard.ts` |
-| Lesson | `stub-bfs` default. Starter `lessons/bfs/graph.ts`. Grader: vitest on `lessons/bfs/graph.test.ts` |
+| Lesson | `stub-bfs` default; also `stub-dfs`. Starters `lessons/bfs/graph.ts`, `lessons/dfs/graph.ts`. Graders: vitest on the matching `graph.test.ts` |
 | Sessions | `.hey-teach/sessions/<id>/{summary.json,messages.jsonl}` |
 | Fork | `SessionStore.fork` copies prefix; `parentId` + `forkedAtIndex`; snap via `src/session-fork.ts` |
 | Outcomes | `unlabeled \| green \| red \| abandoned \| error`. Sources: `manual`, `bash_infer`, `lesson_evaluate` |
@@ -29,7 +29,7 @@ System prompts are **not** stored. They are rebuilt each turn from `build-system
 3. **Incomplete tool rounds snap back** to a valid OpenAI prefix (pending `tool_call_id`s must be empty). Print `snapped n → n'`.
 4. **Child outcome is `unlabeled`.** Do not copy parent green/red.
 5. **Workspace is not a tree.** Fork conversation only.
-6. **`/clear` ≠ rewind.** Same id, empty log.
+6. **`/clear` ≠ rewind.** Same id, empty log, outcome reset to `unlabeled`.
 7. **`trimMessages` is last-N** (`MAX_MESSAGES` in `turn-loop.ts`). Do not “fix” that as a drive-by.
 8. **Starter files never overwrite.** `applyStarterFiles` skips existing paths.
 9. **`bash_infer` must not clobber** `manual`, `abandoned`, or `error` (`bashInferMayUpdate`).
@@ -68,7 +68,7 @@ System prompts are **not** stored. They are rebuilt each turn from `build-system
 | Any TS | `npm run typecheck` |
 | Session/fork/history/export | `npm test` |
 | CLI slash / resume | `printf '…\n/quit\n' \| npm run start -- --model mock` |
-| Resume history | Create a session with a turn, then start **without** `--new`; banner must be followed by numbered lines |
+| Resume history | Create a session with a turn, then start **without** `--new`; banner must be followed by numbered history blocks |
 | Fork | `/fork 1` on a 4-message mock turn (user, tool_calls, tool, text) must snap to `0` if you fork at the tool_calls assistant; parent `wc -l messages.jsonl` unchanged |
 | Evaluate | `/evaluate` after editing `lessons/bfs/graph.ts` |
 | Export | `npm run export -- --all` then `python3 -c "import json,sys; [json.loads(l) for l in open(sys.argv[1])]"` on the printed path |
@@ -93,6 +93,7 @@ src/tools/                 four tools + reminders + path-guard
 src/model/                 Mock + NIM
 src/prompt/                system prompt
 lessons/bfs/               stub-bfs student files + tests
+lessons/dfs/               stub-dfs student files + tests
 .hey-teach/                local state (do not commit)
 ```
 

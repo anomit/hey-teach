@@ -27,19 +27,21 @@ Atomic rewrite for `summary.json` (temp + rename). Append-only for JSONL. A fork
 
 | Flag / command | Behavior |
 |----------------|----------|
-| (default) | Resume most recent session in this workspace, or create one. **Reprints numbered history** after the banner when the log is non-empty. |
+| (default) | Resume most recent session in this workspace, or create one. **Reprints the thread** (colorized blocks, diffs expanded) after the banner when the log is non-empty. |
 | `--new` | Always start a fresh session |
 | `--session <id>` | Resume that id (error if missing); same history reprint |
-| `/history` | Print the numbered thread (0-based JSONL indices) |
+| `/history` | Print the numbered thread (0-based JSONL indices; same expanded reprint as resume) |
 | `/fork [n]` | Copy prefix through index `n` (or HEAD) into a new session id; switch the REPL to the child |
-| `/sessions` | Tree: parent → children; `*` = active; outcome column; `fork@n` on children |
-| `/outcome <label>` | Manual outcome label (`green` / `red` / …) |
-| `/evaluate` | Run lesson grader; set outcome |
+| `/sessions` | Tree: parent → children; `*` = active; `outcome/source` (e.g. `green/evaluate`, `unlabeled`); `fork@n` on children |
+| `/outcome <label>` | Manual export label on this session (`green` / `red` / …) |
+| `/evaluate` | Call this lesson’s `evaluate()` (if any); stamp this session green/red |
 | `/export [filter]` | Write trajectories JSONL ([EXPORT.md](./EXPORT.md)) |
-| `/clear` | Wipe in-memory + on-disk messages; **keep** the same session id (not rewind) |
+| `/clear` | Wipe in-memory + on-disk messages; **keep** the same session id; reset outcome to `unlabeled` (not rewind) |
 | `/new` | Start a new **empty** session id mid-REPL (old one stays on disk) |
 
-`/fork` is a branch, not an in-place truncate. `/clear` stays a wipe of the current id.
+`/fork` is a branch, not an in-place truncate. `/clear` stays a wipe of the current id (outcome reset).
+
+**Lesson id** is stamped at session create with the registry default (`stub-bfs` today). `/lesson <id>` updates the current session only. It is not inferred from the transcript. See [USAGE.md](./USAGE.md) §3.
 
 ### Fork details
 

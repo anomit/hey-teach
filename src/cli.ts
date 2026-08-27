@@ -113,17 +113,17 @@ async function main(): Promise<void> {
 
   const help = () => {
     console.log(`Commands:
-  /lesson [id]     List lessons, or activate one
+  /lesson [id]     List lessons, or switch this session (new sessions use stub-bfs)
   /tools           List tools
-  /sessions        Session tree (* = active)
-  /history         Numbered thread (0-based; for /fork)
+  /sessions        Tree: * active, outcome/source, msgs, lesson
+  /history         Replay thread with diffs (0-based; for /fork)
   /fork [n]        Branch from index n (or HEAD); switch to child
-  /outcome <label> Set outcome: ${OUTCOMES.join("|")} [note]
-  /evaluate        Run lesson grader; update outcome
+  /outcome <label> Manual export label: ${OUTCOMES.join("|")} [note]
+  /evaluate        Run this lesson's evaluate(); stamp this session green/red
   /export [filter] Export trajectories (active|all|green|red|…)
   /new             Start a fresh session (keep old on disk)
   /doctor          Probe NIM endpoint + model
-  /clear           Clear conversation history (same session id)
+  /clear           Wipe this id's messages and reset outcome to unlabeled
   /help            Show this help
   /quit            Exit
 
@@ -234,9 +234,23 @@ Headless export: npm run export -- --all`);
         }
         if (cmd === "evaluate") {
           if (!lesson?.evaluate) {
-            console.log("Active lesson has no evaluate() grader.");
+            console.log(
+              lesson
+                ? `Lesson ${lesson.id} has no evaluate() — nothing to run.`
+                : "No active lesson.",
+            );
             output.write("> ");
             continue;
+          }
+          console.log(
+            `Running ${lesson.id} evaluate() on workspace files, not the chat.`,
+          );
+          if (session.messages.length === 0) {
+            console.log(
+              ansi.yellow(
+                `Note: session ${session.id} has 0 messages — green/red will describe the files on disk.`,
+              ),
+            );
           }
           const status = new StatusLine();
           status.start(`Evaluating ${lesson.id}…`);
@@ -303,7 +317,9 @@ Headless export: npm run export -- --all`);
         if (cmd === "clear") {
           session.clear();
           mock.reset();
-          console.log(`History cleared (session ${session.id}).`);
+          console.log(
+            `History cleared (session ${session.id}). Outcome reset to unlabeled.`,
+          );
           output.write("> ");
           continue;
         }
@@ -331,6 +347,9 @@ Headless export: npm run export -- --all`);
         }
         if (cmd === "lesson") {
           if (!arg) {
+            console.log(
+              `This session: ${session.activeLessonId}    new sessions default to: ${defaultLessonId()}`,
+            );
             for (const l of listLessons()) {
               const mark = l.id === session.activeLessonId ? "*" : " ";
               console.log(`${mark} ${l.id} — ${l.title} [${l.topics.join(", ")}]`);

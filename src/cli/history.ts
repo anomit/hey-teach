@@ -1,43 +1,112 @@
 /**
- * Compact numbered history for resume replay and /history.
+ * Colorized, expanded history for resume replay and /history.
  * Indices are 0-based (JSONL line / forkedAtIndex).
  * See: docs/SESSIONS.md
  */
 
-import type { Message } from "../model/types.js";
+import type { Message, ToolCall } from "../model/types.js";
+import { ansi, colorizeUnifiedDiff } from "./ansi.js";
 
-const CONTENT_LIMIT = 120;
+const DIFF_LINE_LIMIT = 160;
+const BODY_LINE_LIMIT = 40;
 const REMINDER_RE = /\n?<system-reminder>[\s\S]*?<\/system-reminder>/g;
+
+const GUTTER = "│";
+const IDX_WIDTH = 3;
 
 export function formatHistory(messages: Message[]): string {
   if (messages.length === 0) return "No messages yet.";
-  const lines = messages.map((m, i) => formatHistoryLine(i, m));
-  lines.push("");
-  lines.push(
-    `${messages.length} messages. /fork [n] branches from an index; omit n for HEAD.`,
+  const blocks = messages.map((m, i) => formatHistoryEntry(i, m));
+  blocks.push(
+    ansi.dim(
+      `${messages.length} messages. /fork [n] branches from an index; omit n for HEAD.`,
+    ),
   );
-  return lines.join("\n");
+  return blocks.join("\n\n");
 }
 
-export function formatHistoryLine(index: number, message: Message): string {
-  const idx = String(index).padStart(3, " ");
-  const role = message.role.padEnd(10, " ");
-  return `${idx}  ${role}${summarizeMessage(message)}`;
+/** One message as a header + indented body (diffs expanded, roles colored). */
+export function formatHistoryEntry(index: number, message: Message): string {
+  const idx = ansi.yellow(String(index).padStart(IDX_WIDTH, " "));
+  const bar = ansi.dim(GUTTER);
+  const header = `${idx} ${bar} ${formatHeader(message)}`;
+  const body = formatBodyLines(message).map(
+    (line) => `${" ".repeat(IDX_WIDTH)} ${bar} ${line}`,
+  );
+  return [header, ...body].join("\n");
 }
 
-function summarizeMessage(message: Message): string {
+function formatHeader(message: Message): string {
+  if (message.role === "user") return ansi.cyan("user");
+  if (message.role === "assistant") return ansi.magenta("assistant");
+
+  const name = message.name ?? "tool";
+  const body = stripReminders(message.content);
+  const ok = inferToolStatus(body) === "ok";
+  const status = ok ? ansi.green("ok") : ansi.red("err");
+  const extra = looksLikeUnifiedDiff(body) ? `  ${diffStat(body)}` : "";
+  return `${ansi.dim("tool")}  ${ansi.bold(name)}  ${status}${extra}`;
+}
+
+function formatBodyLines(message: Message): string[] {
   if (message.role === "assistant" && message.tool_calls?.length) {
-    const names = message.tool_calls.map((c) => c.function.name).join(", ");
-    return `tool_calls: ${names}`;
+    const lines: string[] = [];
+    const text = message.content?.trim();
+    if (text) lines.push(...capLines(text, BODY_LINE_LIMIT));
+    for (const call of message.tool_calls) {
+      lines.push(formatToolCall(call));
+    }
+    return lines;
   }
+
   if (message.role === "tool") {
-    const name = message.name ?? "tool";
     const body = stripReminders(message.content);
-    const status = inferToolStatus(body);
-    const extra = compactToolBody(body);
-    return extra ? `${name}  ${status}  ${extra}` : `${name}  ${status}`;
+    if (!body) return [ansi.dim("(empty)")];
+    const asDiff = looksLikeUnifiedDiff(body);
+    const limit = asDiff ? DIFF_LINE_LIMIT : BODY_LINE_LIMIT;
+    const raw = capLines(body, limit);
+    if (!asDiff) {
+      const paint = inferToolStatus(body) === "ok" ? ansi.dim : ansi.red;
+      return raw.map((line) =>
+        line.startsWith("… ") ? ansi.dim(line) : paint(line),
+      );
+    }
+    const overflow = raw.find((l) => l.startsWith("… "));
+    const diffLines = overflow ? raw.slice(0, -1) : raw;
+    const colored = colorizeUnifiedDiff(diffLines.join("\n")).split("\n");
+    if (overflow) colored.push(ansi.dim(overflow));
+    return colored;
   }
-  return truncate(oneLine(message.content), CONTENT_LIMIT);
+
+  const text = message.content?.trim() ?? "";
+  if (!text) return [ansi.dim("(empty)")];
+  const lines = capLines(text, BODY_LINE_LIMIT);
+  if (message.role === "user") return lines.map((l) => ansi.cyan(l));
+  return lines;
+}
+
+function formatToolCall(call: ToolCall): string {
+  const args = formatArgsSummary(call.function.arguments);
+  return `${ansi.dim("→")} ${ansi.bold(call.function.name)} ${ansi.dim(args)}`;
+}
+
+function formatArgsSummary(raw: string): string {
+  try {
+    const args = JSON.parse(raw || "{}") as Record<string, unknown>;
+    if (typeof args.path === "string") {
+      return JSON.stringify({ path: args.path });
+    }
+    if (typeof args.command === "string") {
+      const c = args.command.replace(/\s+/g, " ").trim();
+      return JSON.stringify({
+        command: c.length <= 60 ? c : `${c.slice(0, 60)}…`,
+      });
+    }
+    const s = JSON.stringify(args);
+    return s.length <= 80 ? s : `${s.slice(0, 80)}…`;
+  } catch {
+    return raw.length <= 80 ? raw : `${raw.slice(0, 80)}…`;
+  }
 }
 
 function inferToolStatus(body: string): string {
@@ -51,27 +120,28 @@ function inferToolStatus(body: string): string {
   return "ok";
 }
 
-function compactToolBody(body: string): string {
-  const lines = body.split("\n").filter((l) => l.length > 0);
-  if (body.startsWith("--- ") || /^--- /m.test(body.slice(0, 80))) {
-    const plus = lines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length;
-    const minus = lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
-    return `diff +${plus} -${minus}`;
-  }
-  if (lines.length > 1) return `${lines.length} lines`;
-  return truncate(oneLine(body), 80);
+function looksLikeUnifiedDiff(output: string): boolean {
+  return (
+    output.startsWith("--- ") ||
+    output.startsWith("---\t") ||
+    /^--- /m.test(output.slice(0, 80))
+  );
+}
+
+function diffStat(body: string): string {
+  const lines = body.split("\n");
+  const plus = lines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length;
+  const minus = lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
+  return `diff +${plus} -${minus}`;
+}
+
+function capLines(text: string, limit: number): string[] {
+  const lines = text.split("\n");
+  if (lines.length <= limit) return lines;
+  return [...lines.slice(0, limit), `… ${lines.length - limit} more lines`];
 }
 
 function stripReminders(content: string | null): string {
   if (!content) return "";
   return content.replace(REMINDER_RE, "").trim();
-}
-
-function oneLine(content: string | null): string {
-  if (!content) return "";
-  return content.replace(/\s+/g, " ").trim();
-}
-
-function truncate(s: string, n: number): string {
-  return s.length <= n ? s : `${s.slice(0, n)}…`;
 }

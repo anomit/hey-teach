@@ -31,7 +31,19 @@ export function bashInferMayUpdate(current: Outcome | undefined): boolean {
   return o === "unlabeled" || o === "red" || o === "green";
 }
 
-export function formatOutcomeColumn(outcome: Outcome | undefined): string {
-  if (!outcome || outcome === "unlabeled") return "-";
-  return outcome;
+const SOURCE_SHORT: Record<OutcomeSource, string> = {
+  manual: "manual",
+  bash_infer: "bash",
+  lesson_evaluate: "evaluate",
+};
+
+/** `/sessions` column: unlabeled, or `green/evaluate`, `red/bash`, … */
+export function formatOutcomeColumn(
+  outcome: Outcome | undefined,
+  source?: OutcomeSource,
+): string {
+  const o = outcome ?? "unlabeled";
+  if (o === "unlabeled") return "unlabeled";
+  const src = source ? SOURCE_SHORT[source] : undefined;
+  return src ? `${o}/${src}` : o;
 }

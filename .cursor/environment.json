@@ -1,0 +1,5 @@
+{
+  "name": "hey-teach",
+  "user": "ubuntu",
+  "install": "npm ci"
+}

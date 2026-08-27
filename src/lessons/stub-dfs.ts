@@ -9,19 +9,20 @@ import type { LessonPlugin } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
-export const stubBfsLesson: LessonPlugin = {
-  id: "stub-bfs",
-  title: "Stub: Breadth-First Search",
-  topics: ["graphs", "bfs", "algorithms"],
-  systemPromptAddon: `The student is practicing BFS on an adjacency-list graph.
-Guide them to implement breadth-first search in lessons/bfs/graph.ts.
+export const stubDfsLesson: LessonPlugin = {
+  id: "stub-dfs",
+  title: "Stub: Depth-First Search",
+  topics: ["graphs", "dfs", "algorithms"],
+  systemPromptAddon: `The student is practicing DFS on an adjacency-list graph.
+Guide them to implement depth-first search in lessons/dfs/graph.ts.
+Visit neighbors in adjacency-list order (recursive DFS / preorder).
 Do not dump a full solution on the first turn; ask clarifying questions and use tools to inspect their code.`,
   starterFiles: {
-    "lessons/bfs/graph.ts": `/** Starter: implement BFS from a start node. */
+    "lessons/dfs/graph.ts": `/** Starter: implement DFS from a start node. */
 export type Graph = Record<string, string[]>;
 
-export function bfs(graph: Graph, start: string): string[] {
-  // TODO: return nodes in BFS visit order
+export function dfs(graph: Graph, start: string): string[] {
+  // TODO: return nodes in DFS visit order (neighbors in list order)
   void graph;
   void start;
   return [];
@@ -32,7 +33,7 @@ export function bfs(graph: Graph, start: string): string[] {
     try {
       const { stdout, stderr } = await execFileAsync(
         "npx",
-        ["vitest", "run", "lessons/bfs/graph.test.ts"],
+        ["vitest", "run", "lessons/dfs/graph.test.ts"],
         {
           cwd: ctx.workspaceRoot,
           timeout: 60_000,
@@ -43,7 +44,7 @@ export function bfs(graph: Graph, start: string): string[] {
       const snippet = [stdout, stderr].filter(Boolean).join("\n").trim();
       return {
         passed: true,
-        feedback: snippet.slice(0, 800) || "All BFS tests passed.",
+        feedback: snippet.slice(0, 800) || "All DFS tests passed.",
       };
     } catch (err) {
       const e = err as { stdout?: string; stderr?: string; message?: string };
@@ -53,7 +54,7 @@ export function bfs(graph: Graph, start: string): string[] {
         .trim();
       return {
         passed: false,
-        feedback: snippet.slice(0, 800) || "BFS tests failed.",
+        feedback: snippet.slice(0, 800) || "DFS tests failed.",
       };
     }
   },

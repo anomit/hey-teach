@@ -2,6 +2,8 @@
 
 Source of truth for the harness layout. Read it alongside `src/turn-loop.ts` and `src/cli.ts`.
 
+How to run the REPL: [USAGE.md](./USAGE.md). Doc index: [README.md](./README.md). Next coding agent: [../AGENTS.md](../AGENTS.md).
+
 ## Intent
 
 A **minimal turn-based coding harness** that teaches how agent loops work under free NIM constraints. Lessons are plugins; the harness itself is the teaching object. Not a full agent product.
@@ -19,11 +21,12 @@ CLI REPL  →  Session  →  TurnLoop  →  ModelClient (Mock | NIM)
 | Module | Path | Role |
 |--------|------|------|
 | CLI | `src/cli.ts` | Readline REPL, slash commands, tool-call tracing |
-| Session | `src/session.ts` + `src/session-store.ts` | Conversation history + JSONL persistence (see [SESSIONS.md](./SESSIONS.md)) |
+| Session | `src/session.ts` + `src/session-store.ts` | Conversation history + JSONL persistence + outcomes + optional fork lineage (`parentId` / `forkedAtIndex` — trees are summary fields, not a new store; see [SESSIONS.md](./SESSIONS.md), [EXPORT.md](./EXPORT.md)) |
+| Export | `src/export/` | Labeled trajectory JSONL for later SFT |
 | TurnLoop | `src/turn-loop.ts` | One turn: model → tools → model… until a reply |
 | ModelClient | `src/model/` | `chat({ messages, tools })` contract; Mock + NIM |
 | Tools | `src/tools/` | `read_file`, `write_file`, `edit_file`, `bash` (edits return unified diffs) |
-| Lessons | `src/lessons/` | Plugin registry; ships `stub-bfs` as the example lesson |
+| Lessons | `src/lessons/` | Plugin registry; ships `stub-bfs` (default) and `stub-dfs` |
 | Prompt | `src/prompt/build-system-prompt.ts` | Base instructions + lesson addon |
 
 ## Data flow (one user message)

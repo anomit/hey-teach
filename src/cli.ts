@@ -16,11 +16,19 @@ import {
   defaultLessonId,
   getLesson,
   listLessons,
+  reloadLessonPlugins,
 } from "./lessons/registry.js";
 import { ansi, colorizeUnifiedDiff } from "./cli/ansi.js";
 import { printBanner } from "./cli/banner.js";
+import { formatHistory } from "./cli/history.js";
+import { formatSessionTree } from "./cli/session-tree.js";
 import { StatusLine } from "./cli/status-line.js";
 import { Session } from "./session.js";
+import { exportTrajectories } from "./export/trajectories.js";
+import {
+  isOutcome,
+  OUTCOMES,
+} from "./session-outcome.js";
 import {
   createSessionId,
   listSessionSummaries,
@@ -33,6 +41,11 @@ import { TurnLoop, type ToolTrace } from "./turn-loop.js";
 
 type ModelMode = "mock" | "nim";
 
+function teacherModelLabel(mode: ModelMode): string {
+  if (mode === "mock") return "mock";
+  return process.env.NIM_MODEL?.trim() || "meta/llama-3.1-8b-instruct";
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const mode = parseModelMode(argv);
@@ -40,7 +53,15 @@ async function main(): Promise<void> {
   const workspaceRoot = process.cwd();
   const tools = createDefaultToolRegistry();
   const mock = new MockClient();
-  const model = createModel(mode, mock);
+  const nimWait = {
+    emit: (_message: string) => {},
+    note: (_line: string) => {},
+  };
+  const model = createModel(mode, mock, {
+    onWait: (message) => nimWait.emit(message),
+    onNote: (line) => nimWait.note(line),
+  });
+  const teacherModel = teacherModelLabel(mode);
 
   let lessonId = defaultLessonId();
   let lesson = getLesson(lessonId);
@@ -49,6 +70,7 @@ async function main(): Promise<void> {
     workspaceRoot,
     lessonId,
     sessionMode,
+    { teacherModel },
   );
 
   // Prefer lesson from resumed summary when present
@@ -84,6 +106,11 @@ async function main(): Promise<void> {
       : "new session",
   });
 
+  if (resumed && messages.length > 0) {
+    console.log(formatHistory(messages));
+    console.log();
+  }
+
   // for-await over readline (not question()) so piped smoke tests work
   const rl = readline.createInterface({
     input,
@@ -94,16 +121,22 @@ async function main(): Promise<void> {
 
   const help = () => {
     console.log(`Commands:
-  /lesson [id]  List lessons, or activate one
-  /tools        List tools
-  /sessions     List saved sessions (* = active)
-  /new          Start a fresh session (keep old on disk)
-  /doctor       Probe NIM endpoint + model (auth vs chat hang)
-  /clear        Clear conversation history (same session id)
-  /help         Show this help
-  /quit         Exit
+  /lesson [id]     List, switch this session, or /lesson reload (pick up new plugins)
+  /tools           List tools
+  /sessions        Tree: * active, outcome/source, msgs, lesson
+  /history         Replay thread with diffs (0-based; for /fork)
+  /fork [n]        Branch from index n (or HEAD); switch to child
+  /outcome <label> Manual export label: ${OUTCOMES.join("|")} [note]
+  /evaluate        Run this lesson's evaluate(); stamp this session green/red
+  /export [filter] Export trajectories (active|all|green|red|…)
+  /new             Start a fresh session (keep old on disk)
+  /doctor          Probe NIM endpoint + model
+  /clear           Wipe this id's messages and reset outcome to unlabeled
+  /help            Show this help
+  /quit            Exit
 
-Flags: --model mock|nim   --new   --session <id>`);
+Flags: --model mock|nim   --new   --session <id>
+Headless export: npm run export -- --all`);
   };
 
   try {
@@ -140,19 +173,143 @@ Flags: --model mock|nim   --new   --session <id>`);
           if (all.length === 0) {
             console.log("No sessions yet.");
           } else {
-            for (const s of all) {
-              const mark = s.id === session.id ? "*" : " ";
+            for (const line of formatSessionTree(all, session.id)) {
+              console.log(line);
+            }
+          }
+          output.write("> ");
+          continue;
+        }
+        if (cmd === "history") {
+          console.log(formatHistory(session.messages));
+          output.write("> ");
+          continue;
+        }
+        if (cmd === "fork") {
+          let n: number | undefined;
+          if (arg) {
+            n = Number(arg);
+            if (!Number.isInteger(n)) {
+              console.log("Usage: /fork [n]  (n = 0-based message index)");
+              output.write("> ");
+              continue;
+            }
+          }
+          try {
+            const result = await store.fork(n);
+            if (result.snapped) {
               console.log(
-                `${mark} ${s.id}  msgs=${s.messageCount}  lesson=${s.lessonId}  ${s.updatedAt}`,
+                `snapped ${result.requestedIndex} → ${result.forkedAtIndex}`,
               );
             }
+            store = result.store;
+            session = new Session({
+              workspaceRoot,
+              activeLessonId: session.activeLessonId,
+              id: store.id,
+              store,
+              messages: result.messages,
+            });
+            mock.reset();
+            console.log(
+              `Forked → ${session.id}  (prefix 0..${result.forkedAtIndex}, ${result.messages.length} messages)`,
+            );
+            console.log(
+              "Workspace files are not rolled back — disk is still the parent’s latest tree.",
+            );
+          } catch (err) {
+            console.error(
+              ansi.red(err instanceof Error ? err.message : String(err)),
+            );
+          }
+          output.write("> ");
+          continue;
+        }
+        if (cmd === "outcome") {
+          const [label, ...noteParts] = arg.split(/\s+/);
+          if (!label || !isOutcome(label)) {
+            console.log(`Usage: /outcome ${OUTCOMES.join("|")} [note]`);
+            output.write("> ");
+            continue;
+          }
+          const note = noteParts.join(" ").trim() || undefined;
+          const updated = store.setOutcome(label, "manual", note);
+          console.log(
+            `Outcome → ${updated.outcome} (manual)${note ? ` — ${note}` : ""}`,
+          );
+          output.write("> ");
+          continue;
+        }
+        if (cmd === "evaluate") {
+          if (!lesson?.evaluate) {
+            console.log(
+              lesson
+                ? `Lesson ${lesson.id} has no evaluate() — nothing to run.`
+                : "No active lesson.",
+            );
+            output.write("> ");
+            continue;
+          }
+          console.log(
+            `Running ${lesson.id} evaluate() on workspace files, not the chat.`,
+          );
+          if (session.messages.length === 0) {
+            console.log(
+              ansi.yellow(
+                `Note: session ${session.id} has 0 messages — green/red will describe the files on disk.`,
+              ),
+            );
+          }
+          const status = new StatusLine();
+          status.start(`Evaluating ${lesson.id}…`);
+          try {
+            const result = await lesson.evaluate({ workspaceRoot });
+            status.stop();
+            const outcome = result.passed ? "green" : "red";
+            store.setOutcome(outcome, "lesson_evaluate", result.feedback.slice(0, 200));
+            console.log(
+              result.passed
+                ? ansi.green(`evaluate → green`)
+                : ansi.red(`evaluate → red`),
+            );
+            console.log(result.feedback.slice(0, 600));
+          } catch (err) {
+            status.stop();
+            store.setOutcome(
+              "error",
+              "lesson_evaluate",
+              err instanceof Error ? err.message : String(err),
+            );
+            console.error(
+              ansi.red(err instanceof Error ? err.message : String(err)),
+            );
+          }
+          output.write("> ");
+          continue;
+        }
+        if (cmd === "export") {
+          const filter = arg || "active";
+          try {
+            const result = await exportTrajectories({
+              workspaceRoot,
+              activeSessionId: session.id,
+              filter,
+            });
+            console.log(
+              `Exported ${result.count} session(s) → ${result.path}`,
+            );
+            console.log(`Outcomes: ${JSON.stringify(result.outcomes)}`);
+          } catch (err) {
+            console.error(
+              ansi.red(err instanceof Error ? err.message : String(err)),
+            );
           }
           output.write("> ");
           continue;
         }
         if (cmd === "new") {
           store = new SessionStore(workspaceRoot, createSessionId());
-          await store.init(session.activeLessonId);
+          await store.init(session.activeLessonId, { teacherModel });
           session = new Session({
             workspaceRoot,
             activeLessonId: session.activeLessonId,
@@ -168,7 +325,9 @@ Flags: --model mock|nim   --new   --session <id>`);
         if (cmd === "clear") {
           session.clear();
           mock.reset();
-          console.log(`History cleared (session ${session.id}).`);
+          console.log(
+            `History cleared (session ${session.id}). Outcome reset to unlabeled.`,
+          );
           output.write("> ");
           continue;
         }
@@ -194,11 +353,32 @@ Flags: --model mock|nim   --new   --session <id>`);
           output.write("> ");
           continue;
         }
-        if (cmd === "lesson") {
+        if (cmd === "lesson" || cmd === "lessons") {
           if (!arg) {
-            for (const l of listLessons()) {
-              const mark = l.id === session.activeLessonId ? "*" : " ";
-              console.log(`${mark} ${l.id} — ${l.title} [${l.topics.join(", ")}]`);
+            printLessonList(session.activeLessonId);
+            output.write("> ");
+            continue;
+          }
+          if (arg === "reload") {
+            try {
+              const result = await reloadLessonPlugins(workspaceRoot);
+              lesson = getLesson(lessonId) ?? getLesson(defaultLessonId());
+              if (lesson) {
+                lessonId = lesson.id;
+                session.setLessonId(lessonId);
+              }
+              console.log(
+                `Reloaded ${result.ids.length} lesson(s): ${result.ids.join(", ") || "(none)"}`,
+              );
+              if (result.added.length) {
+                console.log(`New: ${result.added.join(", ")}`);
+              }
+              printLessonList(session.activeLessonId);
+            } catch (err) {
+              console.error(
+                ansi.red(err instanceof Error ? err.message : String(err)),
+              );
+              console.log("Restart the REPL if reload cannot pick up the file.");
             }
             output.write("> ");
             continue;
@@ -227,6 +407,11 @@ Flags: --model mock|nim   --new   --session <id>`);
       }
 
       const status = new StatusLine();
+      nimWait.emit = (message) => status.start(message);
+      nimWait.note = (line) => {
+        status.stop();
+        console.log(ansi.dim(line));
+      };
       const loop = new TurnLoop({
         session,
         model,
@@ -245,7 +430,6 @@ Flags: --model mock|nim   --new   --session <id>`);
       });
       try {
         const result = await loop.runTurn(trimmed);
-        status.stop();
         const reply = result.reply;
         if (reply.startsWith("(empty NIM response") || reply.startsWith("(empty model")) {
           console.log(ansi.yellow(reply));
@@ -254,13 +438,16 @@ Flags: --model mock|nim   --new   --session <id>`);
         }
         console.log();
       } catch (err) {
-        status.stop();
         console.error(
           ansi.red(
             `Turn failed: ${err instanceof Error ? err.message : String(err)}`,
           ),
         );
         console.log();
+      } finally {
+        status.stop();
+        nimWait.emit = () => {};
+        nimWait.note = () => {};
       }
       output.write("> ");
     }
@@ -290,7 +477,11 @@ function parseSessionMode(argv: string[]): SessionOpenMode {
   return { kind: "continue" };
 }
 
-function createModel(mode: ModelMode, mock: MockClient): ModelClient {
+function createModel(
+  mode: ModelMode,
+  mock: MockClient,
+  nimHooks?: { onWait?: (message: string) => void; onNote?: (line: string) => void },
+): ModelClient {
   if (mode === "mock") return mock;
 
   const apiKey = process.env.NVIDIA_API_KEY;
@@ -302,7 +493,22 @@ function createModel(mode: ModelMode, mock: MockClient): ModelClient {
   }
   const modelName =
     process.env.NIM_MODEL?.trim() || "meta/llama-3.1-8b-instruct";
-  return new NimClient({ apiKey, model: modelName });
+  return new NimClient({
+    apiKey,
+    model: modelName,
+    onWait: nimHooks?.onWait,
+    onNote: nimHooks?.onNote,
+  });
+}
+
+function printLessonList(activeId: string): void {
+  console.log(
+    `This session: ${activeId}    new sessions default to: ${defaultLessonId()}`,
+  );
+  for (const l of listLessons()) {
+    const mark = l.id === activeId ? "*" : " ";
+    console.log(`${mark} ${l.id} — ${l.title} [${l.topics.join(", ")}]`);
+  }
 }
 
 function printDoctorReport(report: Awaited<ReturnType<typeof runNimDoctor>>): void {

@@ -18,6 +18,6 @@ export interface LessonPlugin {
   systemPromptAddon: string;
   /** Relative path → contents; written when lesson is selected (missing files only) */
   starterFiles?: Record<string, string>;
-  /** Optional grader stub — CLI does not call this yet */
+  /** Optional. `/evaluate` calls this and maps passed → green / failed → red. */
   evaluate?: (ctx: ToolContext) => Promise<EvaluateResult>;
 }

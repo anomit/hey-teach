@@ -74,8 +74,8 @@ An **outcome** is a label on the session’s `summary.json` for later `/export`.
 ### When is a lesson assigned?
 
 - **New session** (`--new`, first start, `/new`): stamped with the **default** lesson, which is `stub-bfs`.
-- **Only registered plugins count.** Today: `stub-bfs` and `stub-dfs`. `/lesson` lists them. `/lesson <id>` switches the **current** session (and writes missing starter files).
-- Lesson is **not** inferred from what the model wrote. Implementing DFS in chat does not change the label; run `/lesson stub-dfs` (see [LESSON_PLUGINS.md](./LESSON_PLUGINS.md)).
+- **Only registered plugins count.** Today: `stub-bfs`, `stub-dfs`, `stub-dijkstra`. `/lesson` lists them. `/lesson <id>` switches the **current** session (and writes missing starter files).
+- Lesson is **not** inferred from what the model wrote. `lessons/dijkstra/graph.ts` on disk is not a lesson. You need `src/lessons/stub-dijkstra.ts`. An **open** REPL will not see a new plugin until `/lesson reload` or a restart (`/lessons` is an alias).
 
 ### What `/evaluate` actually does
 
@@ -153,7 +153,7 @@ See [EXPORT.md](./EXPORT.md) for the schema.
 ```bash
 cp .env.example .env
 # set NVIDIA_API_KEY
-# optionally NIM_MODEL and NIM_TIMEOUT_MS
+# optionally NIM_MODEL, NIM_TIMEOUT_MS, NIM_PACE_MS, NIM_MAX_RETRIES
 
 npm run start -- --model nim
 ```
@@ -171,7 +171,7 @@ Inside the REPL:
 | Command | Use it when |
 |---------|-------------|
 | `/help` | You forgot the table |
-| `/lesson [id]` | List plugins, or switch **this** session; writes **missing** starter files only |
+| `/lesson [id]` | List, switch **this** session, or `/lesson reload` to pick up new plugin files |
 | `/tools` | Confirm the four tools |
 | `/history` | Replay the thread (pick an index for `/fork`) |
 | `/fork [n]` | Branch the thread; keep the parent |
@@ -203,8 +203,10 @@ If the model tells the student to run `npm test` without having run `bash` itsel
 | `/fork 12` with no idea what 12 is | Run `/history` first |
 | Child thinks files were never written | Workspace is not forked |
 | NIM “Connection error” after models.list ok | Bad/hung `NIM_MODEL`; `/doctor` |
+| `NIM error: 500` mid-tool-round | Used to fail immediately. Now paced + 3 backoff retries. If it still dies, wait a minute and resend — the session is saved |
 | `Session not found` | `--session` id typo; ids are directory names under `.hey-teach/sessions/` |
 | `/evaluate` red after you implemented BFS | Tests run against **cwd** `lessons/bfs/graph.ts` — confirm you edited the file on disk |
 | Empty session is `green/evaluate` | `/evaluate` only runs this lesson’s `evaluate()` (for stub-bfs: vitest on disk). Resume the real thread and `/evaluate` or `/outcome green` there |
 | BFS thread shows `unlabeled` | Nobody ran `/evaluate` or a test-via-`bash` **in that session**. The label does not follow the files |
-| Every session is `lesson=stub-bfs` | That is the default plugin. `/lesson stub-dfs` switches the current session |
+| Every session is `lesson=stub-bfs` | That is the default. `/lesson stub-dfs` or `/lesson stub-dijkstra` switches this session |
+| `/lesson` missing Dijkstra after the model wrote `lessons/dijkstra/` | Those files are not a plugin. Need `src/lessons/stub-dijkstra.ts`, then `/lesson reload` or restart |

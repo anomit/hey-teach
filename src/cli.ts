@@ -16,6 +16,7 @@ import {
   defaultLessonId,
   getLesson,
   listLessons,
+  reloadLessonPlugins,
 } from "./lessons/registry.js";
 import { ansi, colorizeUnifiedDiff } from "./cli/ansi.js";
 import { printBanner } from "./cli/banner.js";
@@ -52,7 +53,14 @@ async function main(): Promise<void> {
   const workspaceRoot = process.cwd();
   const tools = createDefaultToolRegistry();
   const mock = new MockClient();
-  const model = createModel(mode, mock);
+  const nimWait = {
+    emit: (_message: string) => {},
+    note: (_line: string) => {},
+  };
+  const model = createModel(mode, mock, {
+    onWait: (message) => nimWait.emit(message),
+    onNote: (line) => nimWait.note(line),
+  });
   const teacherModel = teacherModelLabel(mode);
 
   let lessonId = defaultLessonId();
@@ -113,7 +121,7 @@ async function main(): Promise<void> {
 
   const help = () => {
     console.log(`Commands:
-  /lesson [id]     List lessons, or switch this session (new sessions use stub-bfs)
+  /lesson [id]     List, switch this session, or /lesson reload (pick up new plugins)
   /tools           List tools
   /sessions        Tree: * active, outcome/source, msgs, lesson
   /history         Replay thread with diffs (0-based; for /fork)
@@ -345,14 +353,32 @@ Headless export: npm run export -- --all`);
           output.write("> ");
           continue;
         }
-        if (cmd === "lesson") {
+        if (cmd === "lesson" || cmd === "lessons") {
           if (!arg) {
-            console.log(
-              `This session: ${session.activeLessonId}    new sessions default to: ${defaultLessonId()}`,
-            );
-            for (const l of listLessons()) {
-              const mark = l.id === session.activeLessonId ? "*" : " ";
-              console.log(`${mark} ${l.id} — ${l.title} [${l.topics.join(", ")}]`);
+            printLessonList(session.activeLessonId);
+            output.write("> ");
+            continue;
+          }
+          if (arg === "reload") {
+            try {
+              const result = await reloadLessonPlugins(workspaceRoot);
+              lesson = getLesson(lessonId) ?? getLesson(defaultLessonId());
+              if (lesson) {
+                lessonId = lesson.id;
+                session.setLessonId(lessonId);
+              }
+              console.log(
+                `Reloaded ${result.ids.length} lesson(s): ${result.ids.join(", ") || "(none)"}`,
+              );
+              if (result.added.length) {
+                console.log(`New: ${result.added.join(", ")}`);
+              }
+              printLessonList(session.activeLessonId);
+            } catch (err) {
+              console.error(
+                ansi.red(err instanceof Error ? err.message : String(err)),
+              );
+              console.log("Restart the REPL if reload cannot pick up the file.");
             }
             output.write("> ");
             continue;
@@ -381,6 +407,11 @@ Headless export: npm run export -- --all`);
       }
 
       const status = new StatusLine();
+      nimWait.emit = (message) => status.start(message);
+      nimWait.note = (line) => {
+        status.stop();
+        console.log(ansi.dim(line));
+      };
       const loop = new TurnLoop({
         session,
         model,
@@ -399,7 +430,6 @@ Headless export: npm run export -- --all`);
       });
       try {
         const result = await loop.runTurn(trimmed);
-        status.stop();
         const reply = result.reply;
         if (reply.startsWith("(empty NIM response") || reply.startsWith("(empty model")) {
           console.log(ansi.yellow(reply));
@@ -408,13 +438,16 @@ Headless export: npm run export -- --all`);
         }
         console.log();
       } catch (err) {
-        status.stop();
         console.error(
           ansi.red(
             `Turn failed: ${err instanceof Error ? err.message : String(err)}`,
           ),
         );
         console.log();
+      } finally {
+        status.stop();
+        nimWait.emit = () => {};
+        nimWait.note = () => {};
       }
       output.write("> ");
     }
@@ -444,7 +477,11 @@ function parseSessionMode(argv: string[]): SessionOpenMode {
   return { kind: "continue" };
 }
 
-function createModel(mode: ModelMode, mock: MockClient): ModelClient {
+function createModel(
+  mode: ModelMode,
+  mock: MockClient,
+  nimHooks?: { onWait?: (message: string) => void; onNote?: (line: string) => void },
+): ModelClient {
   if (mode === "mock") return mock;
 
   const apiKey = process.env.NVIDIA_API_KEY;
@@ -456,7 +493,22 @@ function createModel(mode: ModelMode, mock: MockClient): ModelClient {
   }
   const modelName =
     process.env.NIM_MODEL?.trim() || "meta/llama-3.1-8b-instruct";
-  return new NimClient({ apiKey, model: modelName });
+  return new NimClient({
+    apiKey,
+    model: modelName,
+    onWait: nimHooks?.onWait,
+    onNote: nimHooks?.onNote,
+  });
+}
+
+function printLessonList(activeId: string): void {
+  console.log(
+    `This session: ${activeId}    new sessions default to: ${defaultLessonId()}`,
+  );
+  for (const l of listLessons()) {
+    const mark = l.id === activeId ? "*" : " ";
+    console.log(`${mark} ${l.id} — ${l.title} [${l.topics.join(", ")}]`);
+  }
 }
 
 function printDoctorReport(report: Awaited<ReturnType<typeof runNimDoctor>>): void {

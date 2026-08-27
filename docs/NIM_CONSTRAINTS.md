@@ -21,7 +21,8 @@ Client: `src/model/nim-client.ts` — thin wrapper around the official `openai` 
 | Context window pressure | Hard message-window trim in `turn-loop.ts` |
 | Tool-calling quality varies by model | Prefer structured `tool_calls`; if absent, treat content as final reply (no free-form parser) |
 | Latency / flaky tool JSON | Tool args parse failures return error `ToolResult` strings; loop continues |
-| `503 ResourceExhausted` (worker slots full) | Clear error; wait / retry / switch `NIM_MODEL` — capacity is on NVIDIA’s side |
+| Rate / 429 / HTTP 500 (free tier often 500s instead of 429) | Pace chat calls (`NIM_PACE_MS`, default 2s). Retry 429/5xx/connection drops up to `NIM_MAX_RETRIES` (default 3) with 2s/4s/8s backoff. Honor `Retry-After`. Do not retry 401/404 or timeouts |
+| `503 ResourceExhausted` (worker slots full) | Same backoff; then a clear error — switch `NIM_MODEL` if it keeps happening |
 
 ## Modes
 
@@ -39,9 +40,33 @@ Smoke path for NIM may fail or skip tool calls depending on the chosen model. Th
 - Prefer a coding-capable catalog model if you see empty replies often.
 - The CLI shows a spinner on stderr while waiting (`Calling NIM … 3.2s`).
 
+## Pacing and retries (`src/model/nim-retry.ts`)
+
+A user turn can fire many chat completions (one per tool round). Free NIM dies if those go out back-to-back.
+
+- After each chat response, wait `NIM_PACE_MS` (2s) before the next call. Mock is unchanged.
+- On 429, 500, 502, 503, 504, or a connection drop: wait 2s / 4s / 8s (capped 20s, plus jitter) and retry. `Retry-After` wins when present.
+- SDK `maxRetries` is 0 so we do not double-retry under the hood.
+- Timeouts and 401/404 fail immediately — backing off a 60s hang is worse.
+
+Spinner phases (each resets the elapsed timer):
+
+- `Pacing NIM 2s (our gap, not the API)…` — only the local sleep
+- `Waiting on NIM chat… 24.1s` — the HTTP call; free NIM is often this slow
+- `NIM 500 — retry 1/3 in 2s…` — backoff after a transient error
+
+After each chat, a durable line stays in the scrollback:
+
+```text
+nim  paced 1.8s  http 24.1s  ok
+nim  paced 2.0s  http 8.2s+21.4s  ok  retries 1 (500)
+```
+
+If you saw “pacing 2s” climb to 20–30s, that was the spinner never switching off the pace label. The wait was the API.
+
 ## What we intentionally do not do
 
-- Retry storms that burn free credits
+- Retry storms (more than a few paced attempts)
 - Huge few-shot tool examples in the system prompt
 - Keeping full transcripts forever
 - Fighting models that ignore tools with a second custom protocol

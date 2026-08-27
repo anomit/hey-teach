@@ -15,14 +15,14 @@ Defined in `src/lessons/types.ts`:
 | `topics` | yes | Tags for discovery (`/lesson` listing) |
 | `systemPromptAddon` | yes | Text appended to the system prompt when active |
 | `starterFiles` | no | Map of relative path → file contents written on lesson select |
-| `evaluate` | no | Optional function. `/evaluate` calls it and maps `passed` → session `green`/`red`. Not a required test runner — `stub-bfs` / `stub-dfs` spawn vitest on their own `lessons/<algo>/graph.test.ts` |
+| `evaluate` | no | Optional function. `/evaluate` calls it and maps `passed` → session `green`/`red`. Not a required test runner — each stub lesson hardcodes vitest on its own `lessons/<algo>/graph.test.ts` |
 
 The **core never hardcodes** Dijkstra, BFS, or any lesson body. It only loads plugins from the registry.
 
 ## How a lesson attaches
 
 1. Plugin registered in `src/lessons/registry.ts`.
-2. User runs `/lesson stub-bfs` or `/lesson stub-dfs` (or starts a session — new sessions get the registry default, currently `stub-bfs`).
+2. User runs `/lesson stub-bfs`, `/lesson stub-dfs`, or `/lesson stub-dijkstra` (or starts a session — new sessions get the registry default, currently `stub-bfs`).
 3. Session stores `lessonId` on `summary.json`. It is not inferred from the transcript.
 4. `buildSystemPrompt` concatenates base instructions + `systemPromptAddon`.
 5. Optional `starterFiles` are written into the workspace (missing paths only — existing files are left alone).
@@ -43,14 +43,22 @@ The turn loop and tools stay unchanged.
 
 Same shape, different paths. `src/lessons/stub-dfs.ts` frames DFS, writes `lessons/dfs/graph.ts` if missing, and grades with `npx vitest run lessons/dfs/graph.test.ts`. Visit order is recursive DFS / adjacency-list order (not BFS). New sessions still default to `stub-bfs`; switch with `/lesson stub-dfs`.
 
-## Adding a Dijkstra lesson (no core edits)
+## Example: `stub-dijkstra`
 
-1. Create `src/lessons/dijkstra.ts` exporting a `LessonPlugin`.
-2. Register it in `src/lessons/registry.ts` (`lessons.set(plugin.id, plugin)`).
-3. Optionally add `starterFiles` and an `evaluate` stub.
-4. Run `/lesson dijkstra`.
+Same shape. `src/lessons/stub-dijkstra.ts` frames weighted shortest paths, writes `lessons/dijkstra/graph.ts` if missing, and grades with `npx vitest run lessons/dijkstra/graph.test.ts`. Student files on disk are **not** a lesson — without this plugin, `/lesson` will not list Dijkstra.
 
-Do **not** edit `turn-loop.ts`, `cli.ts` (beyond slash-command listing which reads the registry), or tool implementations.
+## Hot reload
+
+The REPL loads plugins once at process start. Writing `lessons/dijkstra/graph.ts` in an open session does not register a lesson. After you add `src/lessons/stub-<id>.ts` (exporting a `LessonPlugin`), run `/lesson reload` (alias: `/lessons`). That cache-busts `src/lessons/*.ts` into the in-memory map. If import fails, restart the process.
+
+## Adding another lesson (no core loop edits)
+
+1. Create `src/lessons/<id>.ts` exporting a `LessonPlugin`.
+2. Register it in `src/lessons/registry.ts` so a fresh start sees it (`/lesson reload` also scans the directory).
+3. Optionally add `starterFiles` and an `evaluate` function.
+4. `/lesson reload` in an open REPL, then `/lesson <id>`.
+
+Do **not** edit `turn-loop.ts` or tool implementations.
 
 ## Why plugins
 

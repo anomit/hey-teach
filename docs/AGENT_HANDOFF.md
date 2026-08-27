@@ -12,9 +12,9 @@ Hey Teach is a **readable** turn-based coding harness for teaching agent loops u
 |-------|--------|
 | REPL | `src/cli.ts` — readline `for-await` (pipes work) |
 | Mock | `src/model/mock-client.ts` — first user turn → `read_file README.md`, then text |
-| NIM | `src/model/nim-client.ts` — OpenAI SDK → `https://integrate.api.nvidia.com/v1` |
+| NIM | `src/model/nim-client.ts` — OpenAI SDK → `https://integrate.api.nvidia.com/v1`. Pace + bounded 429/5xx retries in `src/model/nim-retry.ts` |
 | Tools | Exactly four: `read_file`, `write_file`, `edit_file`, `bash`. Path escape rejected in `src/tools/path-guard.ts` |
-| Lesson | `stub-bfs` default; also `stub-dfs`. Starters `lessons/bfs/graph.ts`, `lessons/dfs/graph.ts`. Graders: vitest on the matching `graph.test.ts` |
+| Lesson | `stub-bfs` default; also `stub-dfs`, `stub-dijkstra`. `/lesson reload` re-imports `src/lessons/*.ts`. Student files under `lessons/<algo>/` are not plugins |
 | Sessions | `.hey-teach/sessions/<id>/{summary.json,messages.jsonl}` |
 | Fork | `SessionStore.fork` copies prefix; `parentId` + `forkedAtIndex`; snap via `src/session-fork.ts` |
 | Outcomes | `unlabeled \| green \| red \| abandoned \| error`. Sources: `manual`, `bash_infer`, `lesson_evaluate` |

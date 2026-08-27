@@ -68,7 +68,7 @@ A later small-model loop (QLoRA SFT on green BFS traces, then maybe DFS, and so 
 
 | Command | Action |
 |---------|--------|
-| `/lesson [id]` | List lessons, or switch this session (writes missing starter files) |
+| `/lesson [id]` | List, switch this session, or `/lesson reload` (new plugins) |
 | `/tools` | List tools |
 | `/sessions` | Session tree (* = active, outcome/source, fork@n) |
 | `/history` | Replay thread with diffs (0-based; pick `n` for `/fork`) |
